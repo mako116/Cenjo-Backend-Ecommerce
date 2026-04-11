@@ -27,21 +27,33 @@ export async function createProduct(req, res) {
         folder: "products",
       });
     });
-    // upload the images
-    const uploadResults = await Promise.all(uploadPromises);
-    // secure_url
-    const imageUrls = uploadResults.map((result) => result.secure_url);
 
-    const product = await Product.create({
-      name,
-      description,
-      price: parseFloat(price),
-      stock: parseInt(stock),
-      category,
-      images: imageUrls,
-    });
-
-    res.status(201).json(product);
+    let uploadResults = [];
+    try {
+      // upload the images
+      uploadResults = await Promise.all(uploadPromises);
+      // secure_url
+      const imageUrls = uploadResults.map((result) => result.secure_url);
+  
+      const product = await Product.create({
+        name,
+        description,
+        price: parseFloat(price),
+        stock: parseInt(stock),
+        category,
+        images: imageUrls,
+      });
+  
+      res.status(201).json(product);
+    } catch (error) {
+      if (uploadResults && uploadResults.length > 0) {
+        const deletePromises = uploadResults.map((result) =>
+          cloudinary.uploader.destroy(result.public_id)
+        );
+        await Promise.all(deletePromises.filter(Boolean));
+      }
+      throw error;
+    }
   } catch (error) {
     console.error("Error creating product", error);
     res.status(500).json({ message: "Internal server error" });
@@ -87,12 +99,26 @@ export async function updateProduct(req, res) {
         });
       });
 
-      const uploadResults = await Promise.all(uploadPromises);
-      product.images = uploadResults.map((result) => result.secure_url);
+      let uploadResults = [];
+      try {
+        uploadResults = await Promise.all(uploadPromises);
+        product.images = uploadResults.map((result) => result.secure_url);
+        
+        await product.save();
+        res.status(200).json(product);
+      } catch (error) {
+        if (uploadResults && uploadResults.length > 0) {
+          const deletePromises = uploadResults.map((result) =>
+            cloudinary.uploader.destroy(result.public_id)
+          );
+          await Promise.all(deletePromises.filter(Boolean));
+        }
+        throw error;
+      }
+    } else {
+      await product.save();
+      res.status(200).json(product);
     }
-
-    await product.save();
-    res.status(200).json(product);
   } catch (error) {
     console.error("Error updating products:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -127,14 +153,33 @@ export async function updateOrderStatus(req, res) {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    order.status = status;
-
-    if (status === "shipped" && !order.shippedAt) {
-      order.shippedAt = new Date();
+    if (order.status === status) {
+      return res.status(200).json({ message: "Order status unchanged", order });
     }
 
-    if (status === "delivered" && !order.deliveredAt) {
-      order.deliveredAt = new Date();
+    const validTransitions = {
+      pending: ["shipped"],
+      shipped: ["pending", "delivered"],
+      delivered: ["shipped"], // Allow reverting mistakes
+    };
+
+    if (!validTransitions[order.status]?.includes(status)) {
+      return res.status(400).json({ 
+        error: `Invalid status transition from ${order.status} to ${status}` 
+      });
+    }
+
+    order.status = status;
+
+    if (status === "pending") {
+      order.shippedAt = undefined;
+      order.deliveredAt = undefined;
+    } else if (status === "shipped") {
+      order.shippedAt = order.shippedAt || new Date();
+      order.deliveredAt = undefined;
+    } else if (status === "delivered") {
+      order.shippedAt = order.shippedAt || new Date();
+      order.deliveredAt = order.deliveredAt || new Date();
     }
 
     await order.save();

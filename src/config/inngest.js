@@ -1,6 +1,7 @@
 import { Inngest } from "inngest";
 import { connectDB } from "./db.js";
 import { User } from "../models/user.model.js";
+import { ENV } from "./env.js";
 
 export const inngest = new Inngest({ id: "ecommerce-app" });
 
@@ -11,11 +12,15 @@ const syncUser = inngest.createFunction(
     const { id, email_addresses, first_name, last_name, image_url } =
       event.data;
 
+    const email = email_addresses[0]?.email_address;
+    const adminEmail = ENV.ADMIN_EMAIL;
+
     const newUser = {
       clerkId: id,
-      email: email_addresses[0]?.email_address,
+      email,
       name: `${first_name || ""} ${last_name || ""}` || "User",
       imageUrl: image_url,
+      role: email === adminEmail ? "admin" : "customer",
       addresses: [],
       wishlist: [],
     };
