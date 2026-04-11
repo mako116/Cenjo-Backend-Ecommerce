@@ -1,4 +1,3 @@
-import fs from "fs/promises";
 import cloudinary from "../config/cloudinary.js";
 import { Product } from "../models/product.model.js";
 import { Order } from "../models/order.model.js";
@@ -8,15 +7,8 @@ export async function createProduct(req, res) {
   try {
     const { name, description, price, stock, category } = req.body;
 
-    if (!name || !description || category === undefined) {
-      return res.status(400).json({ message: "Name, description, and category are required" });
-    }
-
-    const parsedPrice = parseFloat(price);
-    const parsedStock = parseInt(stock);
-
-    if (isNaN(parsedPrice) || parsedPrice < 0 || isNaN(parsedStock) || parsedStock < 0) {
-      return res.status(400).json({ message: "Price and stock must be valid non-negative numbers" });
+    if (!name || !description || !price || !stock || !category) {
+      return res.status(400).json({ message: "All fields are required" });
     }
 
     if (!req.files || req.files.length === 0) {
@@ -42,21 +34,21 @@ export async function createProduct(req, res) {
       uploadResults = await Promise.all(uploadPromises);
       // secure_url
       const imageUrls = uploadResults.map((result) => result.secure_url);
-  
+
       const product = await Product.create({
         name,
         description,
-        price: parsedPrice,
-        stock: parsedStock,
+        price: parseFloat(price),
+        stock: parseInt(stock),
         category,
         images: imageUrls,
       });
-  
+
       res.status(201).json(product);
     } catch (error) {
       if (uploadResults && uploadResults.length > 0) {
         const deletePromises = uploadResults.map((result) =>
-          cloudinary.uploader.destroy(result.public_id)
+          cloudinary.uploader.destroy(result.public_id),
         );
         await Promise.all(deletePromises.filter(Boolean));
       }
@@ -65,14 +57,6 @@ export async function createProduct(req, res) {
   } catch (error) {
     console.error("Error creating product", error);
     res.status(500).json({ message: "Internal server error" });
-  } finally {
-    if (req.files) {
-      await Promise.all(
-        req.files.map((file) =>
-          fs.unlink(file.path).catch((err) => console.error("Failed to delete temp file:", err))
-        )
-      );
-    }
   }
 }
 
@@ -99,16 +83,8 @@ export async function updateProduct(req, res) {
 
     if (name) product.name = name;
     if (description) product.description = description;
-    if (price !== undefined) {
-      const parsedPrice = parseFloat(price);
-      if (isNaN(parsedPrice) || parsedPrice < 0) return res.status(400).json({ message: "Price must be a valid non-negative number" });
-      product.price = parsedPrice;
-    }
-    if (stock !== undefined) {
-      const parsedStock = parseInt(stock);
-      if (isNaN(parsedStock) || parsedStock < 0) return res.status(400).json({ message: "Stock must be a valid non-negative number" });
-      product.stock = parsedStock;
-    }
+    if (price !== undefined) product.price = parseFloat(price);
+    if (stock !== undefined) product.stock = parseInt(stock);
     if (category) product.category = category;
 
     // handle image updates if new images are uploaded
@@ -126,24 +102,14 @@ export async function updateProduct(req, res) {
       let uploadResults = [];
       try {
         uploadResults = await Promise.all(uploadPromises);
-        
-        // Delete old unused images before saving new ones
-        if (product.images && product.images.length > 0) {
-          const deletePromises = product.images.map((imageUrl) => {
-            const publicId = "products/" + imageUrl.split("/products/")[1]?.split(".")[0];
-            if (publicId) return cloudinary.uploader.destroy(publicId);
-          });
-          await Promise.all(deletePromises.filter(Boolean));
-        }
-
         product.images = uploadResults.map((result) => result.secure_url);
-        
+
         await product.save();
         res.status(200).json(product);
       } catch (error) {
         if (uploadResults && uploadResults.length > 0) {
           const deletePromises = uploadResults.map((result) =>
-            cloudinary.uploader.destroy(result.public_id)
+            cloudinary.uploader.destroy(result.public_id),
           );
           await Promise.all(deletePromises.filter(Boolean));
         }
@@ -156,14 +122,6 @@ export async function updateProduct(req, res) {
   } catch (error) {
     console.error("Error updating products:", error);
     res.status(500).json({ message: "Internal server error" });
-  } finally {
-    if (req.files) {
-      await Promise.all(
-        req.files.map((file) =>
-          fs.unlink(file.path).catch((err) => console.error("Failed to delete temp file:", err))
-        )
-      );
-    }
   }
 }
 
@@ -206,8 +164,8 @@ export async function updateOrderStatus(req, res) {
     };
 
     if (!validTransitions[order.status]?.includes(status)) {
-      return res.status(400).json({ 
-        error: `Invalid status transition from ${order.status} to ${status}` 
+      return res.status(400).json({
+        error: `Invalid status transition from ${order.status} to ${status}`,
       });
     }
 
@@ -240,7 +198,9 @@ export async function getAllCustomers(_, res) {
     //   try sort and get the latest users first
 
     // const customers = await User.find().sort({ createdAt: -1 }); // latest user first
-    const customers = await User.find({ role: "customer" }).sort({ createdAt: -1 });
+    const customers = await User.find({ role: "customer" }).sort({
+      createdAt: -1,
+    });
     res.status(200).json({ customers });
   } catch (error) {
     console.error("Error fetching customers:", error);
