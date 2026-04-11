@@ -1,3 +1,4 @@
+import fs from "fs/promises";
 import cloudinary from "../config/cloudinary.js";
 import { Product } from "../models/product.model.js";
 import { Order } from "../models/order.model.js";
@@ -7,8 +8,15 @@ export async function createProduct(req, res) {
   try {
     const { name, description, price, stock, category } = req.body;
 
-    if (!name || !description || !price || !stock || !category) {
-      return res.status(400).json({ message: "All fields are required" });
+    if (!name || !description || category === undefined) {
+      return res.status(400).json({ message: "Name, description, and category are required" });
+    }
+
+    const parsedPrice = parseFloat(price);
+    const parsedStock = parseInt(stock);
+
+    if (isNaN(parsedPrice) || parsedPrice < 0 || isNaN(parsedStock) || parsedStock < 0) {
+      return res.status(400).json({ message: "Price and stock must be valid non-negative numbers" });
     }
 
     if (!req.files || req.files.length === 0) {
@@ -38,8 +46,8 @@ export async function createProduct(req, res) {
       const product = await Product.create({
         name,
         description,
-        price: parseFloat(price),
-        stock: parseInt(stock),
+        price: parsedPrice,
+        stock: parsedStock,
         category,
         images: imageUrls,
       });
@@ -57,6 +65,14 @@ export async function createProduct(req, res) {
   } catch (error) {
     console.error("Error creating product", error);
     res.status(500).json({ message: "Internal server error" });
+  } finally {
+    if (req.files) {
+      await Promise.all(
+        req.files.map((file) =>
+          fs.unlink(file.path).catch((err) => console.error("Failed to delete temp file:", err))
+        )
+      );
+    }
   }
 }
 
@@ -83,8 +99,16 @@ export async function updateProduct(req, res) {
 
     if (name) product.name = name;
     if (description) product.description = description;
-    if (price !== undefined) product.price = parseFloat(price);
-    if (stock !== undefined) product.stock = parseInt(stock);
+    if (price !== undefined) {
+      const parsedPrice = parseFloat(price);
+      if (isNaN(parsedPrice) || parsedPrice < 0) return res.status(400).json({ message: "Price must be a valid non-negative number" });
+      product.price = parsedPrice;
+    }
+    if (stock !== undefined) {
+      const parsedStock = parseInt(stock);
+      if (isNaN(parsedStock) || parsedStock < 0) return res.status(400).json({ message: "Stock must be a valid non-negative number" });
+      product.stock = parsedStock;
+    }
     if (category) product.category = category;
 
     // handle image updates if new images are uploaded
@@ -102,6 +126,16 @@ export async function updateProduct(req, res) {
       let uploadResults = [];
       try {
         uploadResults = await Promise.all(uploadPromises);
+        
+        // Delete old unused images before saving new ones
+        if (product.images && product.images.length > 0) {
+          const deletePromises = product.images.map((imageUrl) => {
+            const publicId = "products/" + imageUrl.split("/products/")[1]?.split(".")[0];
+            if (publicId) return cloudinary.uploader.destroy(publicId);
+          });
+          await Promise.all(deletePromises.filter(Boolean));
+        }
+
         product.images = uploadResults.map((result) => result.secure_url);
         
         await product.save();
@@ -122,6 +156,14 @@ export async function updateProduct(req, res) {
   } catch (error) {
     console.error("Error updating products:", error);
     res.status(500).json({ message: "Internal server error" });
+  } finally {
+    if (req.files) {
+      await Promise.all(
+        req.files.map((file) =>
+          fs.unlink(file.path).catch((err) => console.error("Failed to delete temp file:", err))
+        )
+      );
+    }
   }
 }
 
@@ -197,7 +239,8 @@ export async function getAllCustomers(_, res) {
   try {
     //   try sort and get the latest users first
 
-    const customers = await User.find().sort({ createdAt: -1 }); // latest user first
+    // const customers = await User.find().sort({ createdAt: -1 }); // latest user first
+    const customers = await User.find({ role: "customer" }).sort({ createdAt: -1 });
     res.status(200).json({ customers });
   } catch (error) {
     console.error("Error fetching customers:", error);
@@ -220,7 +263,9 @@ export async function getDashboardStats(_, res) {
 
     const totalRevenue = revenueResult[0]?.total || 0;
 
-    const totalCustomers = await User.countDocuments();
+    // const totalCustomers = await User.countDocuments();
+    const totalCustomers = await User.countDocuments({ role: "customer" });
+
     const totalProducts = await Product.countDocuments();
 
     res.status(200).json({

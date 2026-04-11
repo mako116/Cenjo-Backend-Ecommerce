@@ -12,15 +12,21 @@ const syncUser = inngest.createFunction(
     const { id, email_addresses, first_name, last_name, image_url } =
       event.data;
 
-    const email = email_addresses[0]?.email_address;
-    const adminEmail = ENV.ADMIN_EMAIL;
+    let email = email_addresses[0]?.email_address;
+    if (!email) {
+      console.error("clerk/user.created payload missing email address", id);
+      return;
+    }
+    
+    email = email.toLowerCase().trim();
+    const adminEmail = ENV.ADMIN_EMAIL ? ENV.ADMIN_EMAIL.toLowerCase().trim() : null;
 
     const newUser = {
       clerkId: id,
       email,
-      name: `${first_name || ""} ${last_name || ""}` || "User",
+      name: `${first_name || ""} ${last_name || ""}`.trim() || "User",
       imageUrl: image_url,
-      role: email === adminEmail ? "admin" : "customer",
+      role: (adminEmail && email === adminEmail) ? "admin" : "customer",
       addresses: [],
       wishlist: [],
     };
