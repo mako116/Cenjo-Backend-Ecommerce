@@ -2,12 +2,28 @@ import { User } from "../models/user.model.js";
 
 export async function addAddress(req, res) {
   try {
-    const { label, fullName, streetAddress, city, state, zipCode, phoneNumber, isDefault } =
-      req.body;
+    const {
+      label,
+      fullName,
+      streetAddress,
+      city,
+      state,
+      zipCode,
+      phoneNumber,
+      isDefault,
+    } = req.body;
 
     const user = req.user;
 
-    if (!fullName || !streetAddress || !city || !state || !zipCode) {
+    if (
+      !label ||
+      !fullName ||
+      !streetAddress ||
+      !city ||
+      !state ||
+      !zipCode ||
+      !phoneNumber
+    ) {
       return res.status(400).json({ error: "Missing required address fields" });
     }
 
@@ -31,7 +47,10 @@ export async function addAddress(req, res) {
 
     await user.save();
 
-    res.status(201).json({ message: "Address added successfully", addresses: user.addresses });
+    res.status(201).json({
+      message: "Address added successfully",
+      addresses: user.addresses,
+    });
   } catch (error) {
     console.error("Error in addAddress controller:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -51,8 +70,16 @@ export async function getAddresses(req, res) {
 
 export async function updateAddress(req, res) {
   try {
-    const { label, fullName, streetAddress, city, state, zipCode, phoneNumber, isDefault } =
-      req.body;
+    const {
+      label,
+      fullName,
+      streetAddress,
+      city,
+      state,
+      zipCode,
+      phoneNumber,
+      isDefault,
+    } = req.body;
 
     const { addressId } = req.params;
 
@@ -80,7 +107,10 @@ export async function updateAddress(req, res) {
 
     await user.save();
 
-    res.status(200).json({ message: "Address updated successfully", addresses: user.addresses });
+    res.status(200).json({
+      message: "Address updated successfully",
+      addresses: user.addresses,
+    });
   } catch (error) {
     console.error("Error in updateAddress controller:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -93,9 +123,17 @@ export async function deleteAddress(req, res) {
     const user = req.user;
 
     user.addresses.pull(addressId);
+    const address = user.addresses.id(addressId);
+    if (!address) {
+      return res.status(404).json({ error: "Address not found" });
+    }
+    address.deleteOne();
     await user.save();
 
-    res.status(200).json({ message: "Address deleted successfully", addresses: user.addresses });
+    res.status(200).json({
+      message: "Address deleted successfully",
+      addresses: user.addresses,
+    });
   } catch (error) {
     console.error("Error in deleteAddress controller:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -106,16 +144,22 @@ export async function addToWishlist(req, res) {
   try {
     const { productId } = req.body;
     const user = req.user;
+    if (!productId || !mongoose.Types.ObjectId.isValid(productId)) {
+      return res.status(400).json({ error: "Invalid productId" });
+    }
 
     // check if product is already in the wishlist
-    if (user.wishlist.includes(productId)) {
+    // if (user.wishlist.includes(productId)) {
+    if (user.wishlist.some((id) => id.equals(productId))) {
       return res.status(400).json({ error: "Product already in wishlist" });
     }
 
     user.wishlist.push(productId);
     await user.save();
 
-    res.status(200).json({ message: "Product added to wishlist", wishlist: user.wishlist });
+    res
+      .status(200)
+      .json({ message: "Product added to wishlist", wishlist: user.wishlist });
   } catch (error) {
     console.error("Error in addToWishlist controller:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -127,15 +171,22 @@ export async function removeFromWishlist(req, res) {
     const { productId } = req.params;
     const user = req.user;
 
+    if (!productId || !mongoose.Types.ObjectId.isValid(productId)) {
+      return res.status(400).json({ error: "Invalid productId" });
+    }
     // check if product is already in the wishlist
-    if (!user.wishlist.includes(productId)) {
+    // if (!user.wishlist.includes(productId)) {
+    if (!user.wishlist.some((id) => id.equals(productId))) {
       return res.status(400).json({ error: "Product not found in wishlist" });
     }
 
     user.wishlist.pull(productId);
     await user.save();
 
-    res.status(200).json({ message: "Product removed from wishlist", wishlist: user.wishlist });
+    res.status(200).json({
+      message: "Product removed from wishlist",
+      wishlist: user.wishlist,
+    });
   } catch (error) {
     console.error("Error in removeFromWishlist controller:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -146,7 +197,9 @@ export async function getWishlist(req, res) {
   try {
     // we're using populate, bc wishlist is just an array of product ids
     const user = await User.findById(req.user._id).populate("wishlist");
-
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
     res.status(200).json({ wishlist: user.wishlist });
   } catch (error) {
     console.error("Error in getWishlist controller:", error);
