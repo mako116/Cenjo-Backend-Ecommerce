@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { User } from "../models/user.model.js";
 
 export async function addAddress(req, res) {
@@ -122,12 +123,13 @@ export async function deleteAddress(req, res) {
     const { addressId } = req.params;
     const user = req.user;
 
-    user.addresses.pull(addressId);
     const address = user.addresses.id(addressId);
     if (!address) {
       return res.status(404).json({ error: "Address not found" });
     }
-    address.deleteOne();
+    // address.deleteOne();
+    user.addresses.pull(addressId);
+
     await user.save();
 
     res.status(200).json({
