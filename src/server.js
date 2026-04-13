@@ -33,11 +33,15 @@ if (ENV.NODE_ENV === "production") {
 }
 
 const startServer = async () => {
+  console.log("Starting server boot sequence...");
+  console.log("Attempting to connect to MongoDB...");
+  
   await connectDB();
   console.log("✅ Database connection established");
 
-  app.listen(ENV.PORT, () => {
-    console.log("Server is running");
+  const port = ENV.PORT || 5000;
+  app.listen(port, "0.0.0.0", () => {
+    console.log(`✅ Server is running and listening on port ${port} (0.0.0.0)`);
   });
 };
 
